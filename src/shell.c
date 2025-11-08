@@ -62,7 +62,6 @@ char** tokenize(char* cmdline) {
 }
 
 int handle_builtin(char** arglist) {
-
     // If no command, do nothing
     if (arglist[0] == NULL) {
         return 1; // Command handled (it's just empty input)
@@ -76,12 +75,20 @@ int handle_builtin(char** arglist) {
 
     // Built-in: cd <directory>
     if (strcmp(arglist[0], "cd") == 0) {
-        if (arglist[1] == NULL) {
-            fprintf(stderr, "cd: missing directory\n");
-        } else {
-            if (chdir(arglist[1]) != 0) { 
-                perror("cd"); // prints: cd: <system error>
+        char *targetDir = arglist[1];
+
+        // If no argument, go to home directory
+        if (targetDir == NULL) {
+            targetDir = getenv("HOME");
+            if (targetDir == NULL) {
+                fprintf(stderr, "cd: HOME not set\n");
+                return 1;
             }
+        }
+
+        // Try to change directory
+        if (chdir(targetDir) != 0) { 
+            perror("cd");
         }
         return 1;
     }
@@ -89,7 +96,7 @@ int handle_builtin(char** arglist) {
     // Built-in: help
     if (strcmp(arglist[0], "help") == 0) {
         printf("Built-in commands:\n");
-        printf("  cd <dir>    - change directory\n");
+        printf("  cd <dir>    - change directory\n"); 
         printf("  exit       - exit the shell\n");
         printf("  help       - show this message\n");
         printf("  jobs       - job control not implemented yet\n");
