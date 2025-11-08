@@ -1,5 +1,6 @@
 #ifndef SHELL_H
 #define SHELL_H
+#define HISTORY_SIZE 20
 
 #include <stdio.h>
 #include <string.h>
