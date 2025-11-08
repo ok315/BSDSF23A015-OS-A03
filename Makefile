@@ -2,6 +2,9 @@
 CC = gcc
 CFLAGS = -Wall -Wextra -g -Iinclude
 
+# Linker libraries (Readline)
+LDLIBS = -lreadline
+
 # Directories
 SRC_DIR = src
 OBJ_DIR = obj
@@ -20,7 +23,7 @@ all: $(TARGET)
 # Linking
 $(TARGET): $(OBJS)
 	@mkdir -p $(BIN_DIR)
-	$(CC) $(CFLAGS) -o $@ $^
+	$(CC) $(CFLAGS) -o $@ $^ $(LDLIBS)
 
 # Compiling
 $(OBJ_DIR)/%.o: $(SRC_DIR)/%.c
@@ -34,3 +37,5 @@ run: all
 # Clean build files
 clean:
 	rm -rf $(OBJ_DIR) $(BIN_DIR)
+
+.PHONY: all run clean

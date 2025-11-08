@@ -1,14 +1,32 @@
+/* main.c - Readline-integrated shell main loop
+ *
+ * Assumes shell.h already provides:
+ *   - PROMPT macro/string
+ *   - prototypes for tokenize(), handle_builtin(), execute(), etc.
+ *
+ * Link with -lreadline
+ */
+
 #include "shell.h"
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <errno.h>
+
+/* Readline headers */
+#include <readline/readline.h>
+#include <readline/history.h>
 
 #ifndef HISTORY_SIZE
 #define HISTORY_SIZE 20
 #endif
 
-/* History storage */
+/* History storage (kept for !n and printing via `history`) */
 static char* history[HISTORY_SIZE] = { NULL };
 static int history_count = 0;
 
-/* add a command string to history (duplicates the string) */
+/* add a command string to our local history array (duplicates the string) */
 static void add_history_entry(const char *cmd) {
     if (cmd == NULL || cmd[0] == '\0') return;
 
@@ -22,6 +40,11 @@ static void add_history_entry(const char *cmd) {
     }
 
     history[history_count++] = strdup(cmd);
+    if (history[history_count-1] == NULL) {
+        perror("strdup");
+        /* If strdup failed, repair count */
+        history_count--;
+    }
 }
 
 /* print the history with 1-based numbering */
@@ -41,16 +64,20 @@ static void free_history(void) {
 }
 
 int main() {
-    char* cmdline;
-    char** arglist;
+    char* cmdline = NULL;
+    char** arglist = NULL;
 
-    while ((cmdline = read_cmd(PROMPT, stdin)) != NULL) {
+    /* Optional: initialize readline completion or settings here if desired */
+
+    while ((cmdline = readline(PROMPT)) != NULL) {
+
+        /* readline returns a malloc'd string — must free eventually */
 
         /* Trim leading spaces quickly (so "! 3" is not treated as "!") */
         char *trim = cmdline;
         while (*trim == ' ' || *trim == '\t') trim++;
 
-        /* Handle empty line */
+        /* Handle empty line (just Enter) */
         if (*trim == '\0') {
             free(cmdline);
             continue;
@@ -80,32 +107,41 @@ int main() {
                 continue;
             }
 
-            /* Replace cmdline with a duplicate of the requested history entry */
+            /* Replace cmdline with a duplicate of the requested history entry.
+               Free the readline-provided cmdline first. */
             free(cmdline);
             cmdline = strdup(history[n - 1]);
             if (cmdline == NULL) {
                 perror("strdup");
                 continue;
             }
-            /* proceed below: the resolved command (from history) will be tokenized
-               and then added to history as a normal command */
+
+            /* Also add the resolved command to the Readline history so Up/Down
+               will include commands re-run via !n. This mirrors the behavior
+               of typing the command yourself. */
+            add_history(cmdline);
+        } else {
+            /* Not a !n reference — add the exact user-typed line to Readline history */
+            /* We add it here (after verifying not-empty) so literal "!n" does
+               not get added when user intended to reference history. */
+            add_history(trim);
+            /* Note: readline's add_history expects a char*; passing `trim` which
+               points into `cmdline` is fine because readline copies the text
+               internally into its history data structures. */
         }
 
-        /* At this point cmdline contains the actual command to execute.
-           Add to history now (we store the exact text the user typed or resolved). */
+        /* Now also add to our local history array (for printing & !n indexing) */
+        /* We store the exact resolved command text (cmdline may be strdup'd or original) */
         add_history_entry(cmdline);
 
         /* Tokenize and handle builtins/external commands */
         if ((arglist = tokenize(cmdline)) != NULL) {
 
             /* Provide a built-in `history` command that prints entries */
-            /* Note: handle_builtin already handles builtins like cd/exit/help/jobs.
-               We'll check for "history" explicitly before calling handle_builtin so
-               it appears as a built-in command too. */
             if (strcmp(arglist[0], "history") == 0) {
                 print_history();
             } else {
-                /* NEW: Check if command is built-in */
+                /* Check and handle other builtins */
                 if (!handle_builtin(arglist)) {
                     /* Not a built-in → run external command */
                     execute(arglist);
@@ -117,13 +153,17 @@ int main() {
                 free(arglist[i]);
             }
             free(arglist);
+            arglist = NULL;
         }
 
         free(cmdline);
+        cmdline = NULL;
     }
 
     /* cleanup before exiting */
     free_history();
+
+    /* Optionally, write readline history to a file with write_history() if you want persistent history */
 
     printf("\nShell exited.\n");
     return 0;
