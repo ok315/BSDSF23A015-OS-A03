@@ -25,39 +25,62 @@ char** tokenize(char* cmdline) {
         return NULL;
     }
 
+    // Allocate token array similar to previous layout
     char** arglist = (char**)malloc(sizeof(char*) * (MAXARGS + 1));
     for (int i = 0; i < MAXARGS + 1; i++) {
         arglist[i] = (char*)malloc(sizeof(char) * ARGLEN);
         bzero(arglist[i], ARGLEN);
     }
 
-    char* cp = cmdline;
-    char* start;
-    int len;
+    char *cp = cmdline;
     int argnum = 0;
 
     while (*cp != '\0' && argnum < MAXARGS) {
-        while (*cp == ' ' || *cp == '\t') cp++; // Skip leading whitespace
-        
-        if (*cp == '\0') break; // Line was only whitespace
+        // Skip whitespace
+        while (*cp == ' ' || *cp == '\t') cp++;
+        if (*cp == '\0' || *cp == '\n') break;
 
-        start = cp;
-        len = 1;
-        while (*++cp != '\0' && !(*cp == ' ' || *cp == '\t')) {
-            len++;
+        // If it's a special single-char token: <, >, |
+        if (*cp == '<' || *cp == '>' || *cp == '|') {
+            arglist[argnum][0] = *cp;
+            arglist[argnum][1] = '\0';
+            argnum++;
+            cp++; // consume the special char
+            continue;
         }
-        strncpy(arglist[argnum], start, len);
-        arglist[argnum][len] = '\0';
+
+        // Quoted string handling
+        if (*cp == '"' || *cp == '\'') {
+            char quote = *cp;
+            cp++; // skip opening quote
+            int i = 0;
+            while (*cp != '\0' && *cp != quote && i < ARGLEN - 1) {
+                arglist[argnum][i++] = *cp;
+                cp++;
+            }
+            arglist[argnum][i] = '\0';
+            if (*cp == quote) cp++; // skip closing quote if present
+            argnum++;
+            continue;
+        }
+
+        // Normal word (stop at whitespace or special char)
+        int i = 0;
+        while (*cp != '\0' && *cp != ' ' && *cp != '\t' && *cp != '<' && *cp != '>' && *cp != '|' && *cp != '\n' && i < ARGLEN - 1) {
+            arglist[argnum][i++] = *cp;
+            cp++;
+        }
+        arglist[argnum][i] = '\0';
         argnum++;
     }
 
     if (argnum == 0) { // No arguments were parsed
-        for(int i = 0; i < MAXARGS + 1; i++) free(arglist[i]);
+        for (int i = 0; i < MAXARGS + 1; i++) free(arglist[i]);
         free(arglist);
         return NULL;
     }
 
-    arglist[argnum] = NULL;
+    arglist[argnum] = NULL; // null-terminate token list
     return arglist;
 }
 
