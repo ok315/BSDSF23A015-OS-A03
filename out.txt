@@ -1,0 +1,7 @@
+total 20
+drwxrwxr-x 2 osama osama 4096 Nov  9 10:36 bin
+drwxrwxr-x 2 osama osama 4096 Nov  8 10:00 include
+-rw-rw-r-- 1 osama osama  673 Nov  8 16:09 Makefile
+drwxrwxr-x 2 osama osama 4096 Nov  9 10:36 obj
+-rw-r--r-- 1 osama osama    0 Nov  9 10:39 out.txt
+drwxrwxr-x 2 osama osama 4096 Nov  9 10:36 src
