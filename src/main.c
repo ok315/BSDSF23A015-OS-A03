@@ -1,6 +1,7 @@
 /* main.c - Readline-integrated shell main loop
  *
  * Adds Feature 6 Task 3: background jobs (&), jobs list, and zombie reaping.
+ * Also extended to support multi-line if-then-else-fi blocks (Feature-7).
  */
 
 #include "shell.h"
@@ -49,6 +50,19 @@ static void free_history(void) {
     history_count = 0;
 }
 
+/* Helper: check whether a line (possibly with leading/trailing spaces) is exactly "fi" */
+static int is_fi_line(const char *line) {
+    if (line == NULL) return 0;
+    /* skip leading whitespace */
+    const char *p = line;
+    while (*p == ' ' || *p == '\t') p++;
+    if (strncmp(p, "fi", 2) != 0) return 0;
+    p += 2;
+    /* skip trailing whitespace */
+    while (*p == ' ' || *p == '\t') p++;
+    return *p == '\0';
+}
+
 /* ---------------------- MAIN ---------------------- */
 int main() {
     char *cmdline = NULL;
@@ -58,10 +72,11 @@ int main() {
         /* Reap any finished background jobs before showing prompt */
         reap_zombies();
 
+        /* Read the first line of input */
         cmdline = readline(PROMPT);
         if (cmdline == NULL) break;
 
-        /* Trim leading spaces */
+        /* Trim leading spaces to examine the command start */
         char *trim = cmdline;
         while (*trim == ' ' || *trim == '\t') trim++;
 
@@ -70,7 +85,7 @@ int main() {
             continue;
         }
 
-        /* Handle !n re-execution */
+        /* Handle !n re-execution (history reference) */
         if (trim[0] == '!') {
             if (trim[1] == '\0') {
                 fprintf(stderr, "Invalid history reference: '!'\n");
@@ -97,12 +112,83 @@ int main() {
                 perror("strdup");
                 continue;
             }
+            /* set trim to the retrieved line */
+            trim = cmdline;
+            while (*trim == ' ' || *trim == '\t') trim++;
+            /* add to readline history so readline knows about it */
             add_history(cmdline);
         } else {
+            /* For normal single-line start, add to readline's history (this is lightweight) */
             add_history(trim);
         }
 
-        add_history_entry(cmdline);
+        /*
+         * If this is an 'if' start (after leading spaces), collect a multi-line block
+         * until a line that is exactly 'fi' (ignoring leading/trailing spaces) is entered.
+         */
+        if (strncmp(trim, "if", 2) == 0 && (trim[2] == ' ' || trim[2] == '\t' || trim[2] == '\0')) {
+            /* Build a combined block string: start with the first trimmed line */
+            size_t total_len = strlen(trim) + 1; /* include '\0' */
+            char *block = (char*)malloc(total_len);
+            if (!block) {
+                perror("malloc");
+                free(cmdline);
+                continue;
+            }
+            strcpy(block, trim);
+
+            /* Read continuation lines until "fi" */
+            while (1) {
+                char *cont = readline("> ");
+                if (cont == NULL) {
+                    /* EOF during block input -- abort this block */
+                    fprintf(stderr, "\nUnexpected EOF while reading if-block; aborting block\n");
+                    free(cont);
+                    free(block);
+                    block = NULL;
+                    break;
+                }
+
+                /* Append a newline and the continuation line to block */
+                size_t newlen = total_len + strlen("\n") + strlen(cont);
+                char *tmp = realloc(block, newlen);
+                if (tmp == NULL) {
+                    perror("realloc");
+                    free(cont);
+                    free(block);
+                    block = NULL;
+                    break;
+                }
+                block = tmp;
+                /* append newline and cont */
+                strcat(block, "\n");
+                strcat(block, cont);
+                total_len = newlen;
+
+                /* Check for fi line (only cont's contents) */
+                if (is_fi_line(cont)) {
+                    free(cont);
+                    break; /* block complete */
+                }
+                free(cont);
+            }
+
+            /* If block reading succeeded, replace cmdline with block (and update trim) */
+            if (block != NULL) {
+                free(cmdline); /* free original single-line buffer */
+                cmdline = block;
+                trim = cmdline;
+                while (*trim == ' ' || *trim == '\t') trim++;
+                /* Also add the full block to our custom history structure */
+                add_history_entry(cmdline);
+            } else {
+                /* Block aborted due to EOF or memory failure — skip execution */
+                continue;
+            }
+        } else {
+            /* Not an if-block: record the single-line command in our custom history */
+            add_history_entry(cmdline);
+        }
 
         /* ---------- Command chaining or single command ---------- */
         if (strchr(cmdline, ';') != NULL) {
@@ -115,7 +201,16 @@ int main() {
                 } else if (strcmp(arglist[0], "jobs") == 0) {
                     print_jobs();
                 } else if (!handle_builtin(arglist)) {
-                    execute_single(arglist);
+                    /*
+                     * If this was an if-block, the tokenization will treat the whole block
+                     * as a single token stream. We rely on a helper to detect and execute
+                     * the if-then-else block (implemented in shell.c as handle_if_then_else).
+                     */
+                    if (handle_if_then_else(cmdline)) {
+                        /* handled by if-block executor */
+                    } else {
+                        execute_single(arglist);
+                    }
                 }
                 for (int i = 0; arglist[i] != NULL; i++)
                     free(arglist[i]);
@@ -132,4 +227,3 @@ int main() {
     printf("\nShell exited.\n");
     return 0;
 }
-

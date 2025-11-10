@@ -47,4 +47,10 @@ void reap_zombies(void); /* reap finished background children (WNOHANG) */
    Returns 1 if builtin handled, 0 otherwise */
 int handle_builtin(char** arglist);
 
+/* NEW: handle_if_then_else parses & executes a collected if-then-else-fi block.
+   It takes the full multiline block as a single string (with newlines) and
+   returns 1 if it handled the block, 0 otherwise.
+*/
+int handle_if_then_else(char *cmdline);
+
 #endif // SHELL_H
