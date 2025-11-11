@@ -1,5 +1,10 @@
 #include "shell.h"
 
+#include <stddef.h>
+#include <strings.h> /* for bzero */
+
+/* ------------------- existing functions (unchanged except minor edits) ------------------ */
+
 char* read_cmd(char* prompt, FILE* fp) {
     printf("%s", prompt);
     char* cmdline = (char*) malloc(sizeof(char) * MAX_LEN);
@@ -80,12 +85,93 @@ char** tokenize(char* cmdline) {
     return arglist;
 }
 
+/* ------------------- Variable store implementation (linked list) ------------------- */
+
+typedef struct varnode {
+    char *name;
+    char *value;
+    struct varnode *next;
+} varnode_t;
+
+static varnode_t *var_head = NULL;
+
+/* set_var: add or update a variable */
+int set_var(const char *name, const char *value) {
+    if (name == NULL) return -1;
+    if (name[0] == '\0') return -1;
+    /* find existing */
+    varnode_t *cur = var_head;
+    while (cur != NULL) {
+        if (strcmp(cur->name, name) == 0) {
+            /* update */
+            free(cur->value);
+            cur->value = strdup(value ? value : "");
+            if (cur->value == NULL) return -1;
+            return 0;
+        }
+        cur = cur->next;
+    }
+    /* not found: create new node */
+    varnode_t *node = (varnode_t*)malloc(sizeof(varnode_t));
+    if (!node) return -1;
+    node->name = strdup(name);
+    node->value = strdup(value ? value : "");
+    if (!node->name || !node->value) {
+        free(node->name);
+        free(node->value);
+        free(node);
+        return -1;
+    }
+    node->next = var_head;
+    var_head = node;
+    return 0;
+}
+
+/* get_var: return internal pointer to value or NULL */
+const char* get_var(const char *name) {
+    if (name == NULL) return NULL;
+    varnode_t *cur = var_head;
+    while (cur != NULL) {
+        if (strcmp(cur->name, name) == 0) {
+            return cur->value;
+        }
+        cur = cur->next;
+    }
+    return NULL;
+}
+
+/* print_all_variables: implement 'set' builtin behaviour (prints name=value) */
+void print_all_variables(void) {
+    varnode_t *cur = var_head;
+    while (cur != NULL) {
+        printf("%s=%s\n", cur->name, cur->value);
+        cur = cur->next;
+    }
+}
+
+/* free_all_variables: cleanup on shell exit */
+void free_all_variables(void) {
+    varnode_t *cur = var_head;
+    while (cur != NULL) {
+        varnode_t *next = cur->next;
+        free(cur->name);
+        free(cur->value);
+        free(cur);
+        cur = next;
+    }
+    var_head = NULL;
+}
+
+/* ------------------- builtins & if-then-else (slightly modified) ------------------- */
+
 int handle_builtin(char** arglist) {
     if (arglist[0] == NULL) {
         return 1;
     }
 
     if (strcmp(arglist[0], "exit") == 0) {
+        /* cleanup variables before exit */
+        free_all_variables();
         printf("Exiting shell...\n");
         exit(0);
     }
@@ -112,11 +198,18 @@ int handle_builtin(char** arglist) {
         printf("  help        - show this message\n");
         printf("  jobs        - job control not implemented yet\n");
         printf("  if ... then ... else ... fi - simple conditional\n");
+        printf("  set         - print defined shell variables (name=value)\n");
         return 1;
     }
 
     if (strcmp(arglist[0], "jobs") == 0) {
         printf("Job control not yet implemented.\n");
+        return 1;
+    }
+
+    /* NEW: set builtin (print variables) */
+    if (strcmp(arglist[0], "set") == 0) {
+        print_all_variables();   // prints name=value
         return 1;
     }
 
@@ -159,3 +252,4 @@ int handle_if_then_else(char* cmdline) {
 
     return 1; // handled
 }
+

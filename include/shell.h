@@ -53,4 +53,12 @@ int handle_builtin(char** arglist);
 */
 int handle_if_then_else(char *cmdline);
 
+/* ===================== Shell variable API ===================== */
+/* Simple key/value variable store used by Feature-8. */
+int set_var(const char *name, const char *value); /* returns 0 on success, -1 on error */
+const char* get_var(const char *name);            /* returns pointer to internal value or NULL */
+void print_all_variables(void);                   /* prints name=value lines */
+void free_all_variables(void);                    /* free memory on exit */
+/* ============================================================= */
+
 #endif // SHELL_H
